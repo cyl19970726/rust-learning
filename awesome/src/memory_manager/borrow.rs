@@ -180,6 +180,85 @@ fn allocate_in(capacity: usize, init: AllocInit, alloc: A) -> Self {
 }
 */
 
+// 介绍过只读引用实现了 Copy trait，也就意味着引用的赋值、传参都会产生新的浅拷贝。
+// data 有很多只读引用指向它，但堆上的数据依旧只有 data 一个所有者，所以值的任意多个引用并不会影响所有权的唯一性。
+
+
+// 引出问题： 一旦 data 离开了作用域被释放，如果还有引用指向 data，岂不是造成我们想极力避免的使用已释放内存（use after free）这样的内存安全问题？怎么办呢？
+
+
+/*
+>> 借用的生命周期及其约束 << 
+我们对值的引用也要有约束，这个约束是：借用不能超过（outlive）值的生存期。
+
+fn test_ref_lifetime() {
+    let r = local_ref();
+    println!("r: {:p}", r);
+}
+
+fn local_ref<'a>() -> &'a i32 {
+    let a = 42;
+    &a
+}
+
+
+****** *****
+*/
+
+fn test_ref_lifetime_2(){
+    // 可变数组存放在堆上，栈上只有一个胖指针指向它，所以这是一个典型的把栈上变量的引用存在堆上
+    let mut data: Vec<&u32> = Vec::new();
+    let v = 42;
+    data.push(&v);
+    println!("data: {:?}", data);
+}
+
+// fn test_ref_lifetime_3(){
+//     fn main() {
+//         let mut data: Vec<&u32> = Vec::new();
+//         push_local_ref(&mut data);
+//         println!("data: {:?}", data);
+//     }
+    
+//     fn push_local_ref(data: &mut Vec<&u32>) {
+//         let v = 42;
+//         data.push(&v);
+//     }
+    
+// }
+
+//但如果抓住了一个核心要素“在一个作用域下，同一时刻，一个值只能有一个所有者”，你会发现，其实很简单。
+//堆变量的生命周期不具备任意长短的灵活性，因为堆上内存的生死存亡，跟栈上的所有者牢牢绑定。而栈上内存的生命周期，又跟栈的生命周期相关，所以我们核心只需要关心调用栈的生命周期。
+
+/* 
+===== 多个可变引用共存 会报错 =======
+fn can_modify_mut() {
+    let mut data = vec![1, 2, 3];
+
+    for item in data.iter_mut() {
+        data.push(*item + 1); // 在同一个作用域下有多个可变引用，是不安全的。
+    }
+}
+
+*/
+
+/*
+同时有一个可变引用和若干个只读引用，
+*/
+// fn test_borrow_read_write(){
+//     let mut data = vec![1, 2, 3];
+
+//     let data1 = vec![&data[0]];
+//     println!("data[0]: {:p}", &data[0]);
+
+//     for i in 0..100{
+//         data.push(i); //如果你仔细推敲，就会发现这里有内存不安全的潜在操作：如果继续添加元素，堆上的数据预留的空间不够了，就会重新分配一片足够大的内存，把之前的值拷过来，然后释放旧的内存。这样就会让 data1 中保存的 &data[0] 引用失效，导致内存安全问题。
+//     }
+
+//     println!("data[0]: {:p}", &data[0]);
+//     println!("boxed: {:p}", &data1);
+// }
+
 pub mod tests {
     use crate::memory_manager::borrow::*;
 
@@ -198,5 +277,10 @@ pub mod tests {
         // data_ptr_3();
         // data_ptr_4();
         data_ptr_5();
+    }
+
+    #[test]
+    fn test_ref(){
+        test_ref_lifetime_2();
     }
 }
